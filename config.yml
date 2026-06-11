@@ -21,7 +21,7 @@ go2rtc:
 
 audio:
   enabled: true
-  min_volume: 200                    # Sensibilidad alta para sonidos bajos
+  min_volume: 500
   listen:
     - bark
     - dog
@@ -31,17 +31,17 @@ audio:
     - growl
   filters:
     bark:
-      threshold: 0.5                 # Umbral mínimo permitido
+      threshold: 0.70
     dog:
-      threshold: 0.5
+      threshold: 0.70
     animal:
-      threshold: 0.5
+      threshold: 0.70
     howl:
-      threshold: 0.5
+      threshold: 0.70
     whine:
-      threshold: 0.5
+      threshold: 0.70
     growl:
-      threshold: 0.5
+      threshold: 0.70
 
 detectors:
   cpu:
