@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquitectura: Detección de ladridos con Frigate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.7; color: #1a1a1a; background: #f8f7f4; padding: 2rem; }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 0.4rem; }
+  h2 { font-size: 17px; font-weight: 600; margin: 2rem 0 0.8rem; }
+  h3 { font-size: 14px; font-weight: 600; margin: 0 0 0.3rem; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 2.5rem; }
+  .section { margin-bottom: 2.5rem; }
+  .diagram-wrap { background: #fff; border: 1px solid #e5e3dd; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; overflow-x: auto; }
+  .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .tech-card { background: #fff; border: 1px solid #e5e3dd; border-radius: 10px; padding: 1.2rem; }
+  .tech-card .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-bottom: 0.6rem; letter-spacing: 0.03em; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-orange { background: #ffedd5; color: #c2410c; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+  .badge-red { background: #fee2e2; color: #b91c1c; }
+  .tech-card p { font-size: 13px; color: #555; line-height: 1.6; margin-top: 0.3rem; }
+  .flow-steps { display: flex; flex-direction: column; gap: 0; }
+  .flow-step { display: flex; gap: 1rem; align-items: flex-start; }
+  .flow-step .number { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #1a1a1a; color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .flow-step .content { flex: 1; padding-bottom: 1.2rem; border-left: 2px solid #e5e3dd; margin-left: 14px; padding-left: 1.2rem; }
+  .flow-step:last-child .content { border-left: 2px solid transparent; }
+  .flow-step .content strong { display: block; font-size: 14px; margin-bottom: 0.2rem; }
+  .flow-step .content span { font-size: 13px; color: #555; }
+  .config-block { background: #f8f7f4; border: 1px solid #e5e3dd; border-radius: 8px; padding: 1rem 1.2rem; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8; overflow-x: auto; margin-top: 0.6rem; }
+  .config-block .comment { color: #888; }
+  .config-block .key { color: #0f5499; }
+  .config-block .value { color: #166534; }
+  .files-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.8rem; }
+  .file-item { background: #fff; border: 1px solid #e5e3dd; border-radius: 8px; padding: 0.9rem 1rem; }
+  .file-item .filename { font-family: monospace; font-size: 13px; font-weight: 600; color: #1a1a1a; }
+  .file-item .filepath { font-family: monospace; font-size: 11px; color: #888; margin-bottom: 0.4rem; }
+  .file-item p { font-size: 12px; color: #666; }
+  .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.8rem 1rem; font-size: 13px; color: #78350f; margin-top: 1rem; }
+  .note strong { font-weight: 600; }
+  @media print { body { background: #fff; padding: 1rem; } }
+</style>
+</head>
+<body>
+
+<h1>Sistema de detección de ladridos</h1>
+<p class="subtitle">Arquitectura técnica · Synology DS225+ · Junio 2026</p>
+
+<!-- DIAGRAMA SVG -->
+<div class="section">
+  <h2>Esquema de la arquitectura</h2>
+  <div class="diagram-wrap">
+    <svg width="100%" viewBox="0 0 680 480" role="img">
+      <title>Diagrama de arquitectura del sistema de detección de ladridos</title>
+      <desc>Flujo desde la cámara Tapo hasta la notificación en el móvil pasando por Frigate, go2rtc, Mosquitto y el puente Python</desc>
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Cámara Tapo -->
+      <g>
+        <rect x="20" y="60" width="110" height="60" rx="8" fill="#f0f9ff" stroke="#7dd3fc" stroke-width="1"/>
+        <text x="75" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">Cámara Tapo</text>
+        <text x="75" y="103" text-anchor="middle" font-size="11" fill="#0ea5e9">C210 · RTSP</text>
+      </g>
+      <text x="75" y="133" text-anchor="middle" font-size="10" fill="#94a3b8">192.168.1.167</text>
+
+      <!-- Flecha 1 -->
+      <line x1="130" y1="90" x2="168" y2="90" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)" fill="none"/>
+      <text x="149" y="84" text-anchor="middle" font-size="9" fill="#94a3b8">RTSP</text>
+
+      <!-- Contenedor Synology -->
+      <rect x="170" y="20" width="420" height="200" rx="12" fill="#f8f7f4" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6 3"/>
+      <text x="380" y="42" text-anchor="middle" font-size="11" font-weight="600" fill="#64748b">SYNOLOGY DS225+ · Docker</text>
+
+      <!-- go2rtc (dentro de Frigate) -->
+      <g>
+        <rect x="185" y="55" width="120" height="55" rx="8" fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1"/>
+        <text x="245" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">go2rtc</text>
+        <text x="245" y="95" text-anchor="middle" font-size="10" fill="#a855f7">Stream manager</text>
+      </g>
+
+      <!-- Frigate -->
+      <g>
+        <rect x="185" y="125" width="120" height="55" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+        <text x="245" y="148" text-anchor="middle" font-size="12" font-weight="600" fill="#1d4ed8">Frigate</text>
+        <text x="245" y="165" text-anchor="middle" font-size="10" fill="#3b82f6">Detecta ladridos</text>
+      </g>
+
+      <!-- Flecha go2rtc → Frigate -->
+      <line x1="245" y1="110" x2="245" y2="123" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arrow)" fill="none"/>
+      <text x="261" y="120" font-size="9" fill="#a855f7">audio</text>
+
+      <!-- Mosquitto -->
+      <g>
+        <rect x="345" y="80" width="115" height="55" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+        <text x="402" y="103" text-anchor="middle" font-size="12" font-weight="600" fill="#c2410c">Mosquitto</text>
+        <text x="402" y="120" text-anchor="middle" font-size="10" fill="#f97316">Broker MQTT</text>
+      </g>
+      <text x="402" y="148" text-anchor="middle" font-size="10" fill="#94a3b8">puerto 1883</text>
+
+      <!-- Frigate → Mosquitto -->
+      <line x1="305" y1="152" x2="343" y2="120" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)" fill="none"/>
+      <text x="330" y="142" text-anchor="middle" font-size="9" fill="#3b82f6">MQTT</text>
+
+      <!-- Puente Python -->
+      <g>
+        <rect x="470" y="80" width="105" height="55" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+        <text x="522" y="101" text-anchor="middle" font-size="12" font-weight="600" fill="#15803d">bridge.py</text>
+        <text x="522" y="118" text-anchor="middle" font-size="10" fill="#22c55e">Puente Python</text>
+      </g>
+
+      <!-- Mosquitto → bridge -->
+      <line x1="460" y1="107" x2="468" y2="107" stroke="#f97316" stroke-width="1.5" marker-end="url(#arrow)" fill="none"/>
+      <text x="464" y="100" text-anchor="middle" font-size="9" fill="#f97316">sub</text>
+
+      <!-- Flecha bridge → webhook -->
+      <line x1="522" y1="135" x2="522" y2="248" stroke="#15803d" stroke-width="1.5" marker-end="url(#arrow)" fill="none"/>
+      <text x="538" y="200" font-size="9" fill="#15803d">HTTP POST</text>
+      <text x="538" y="211" font-size="9" fill="#15803d">Webhook</text>
+
+      <!-- Surveillance Station -->
+      <g>
+        <rect x="420" y="250" width="155" height="60" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+        <text x="497" y="274" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">Surveillance Station</text>
+        <text x="497" y="291" text-anchor="middle" font-size="10" fill="#ef4444">Synology · puerto 5000</text>
+      </g>
+
+      <!-- Surveillance → móvil -->
+      <line x1="497" y1="310" x2="497" y2="358" stroke="#dc2626" stroke-width="1.5" marker-end="url(#arrow)" fill="none"/>
+      <text x="515" y="340" font-size="9" fill="#dc2626">push</text>
+
+      <!-- Móvil -->
+      <g>
+        <rect x="440" y="360" width="115" height="60" rx="8" fill="#fdf2f8" stroke="#f0abfc" stroke-width="1"/>
+        <text x="497" y="386" text-anchor="middle" font-size="13" font-weight="600" fill="#a21caf">📱 Móvil</text>
+        <text x="497" y="404" text-anchor="middle" font-size="10" fill="#c026d3">Notificación DS cam</text>
+      </g>
+
+      <!-- Leyenda de contenedor -->
+      <text x="560" y="215" font-size="10" fill="#94a3b8">3 contenedores</text>
+      <text x="560" y="228" font-size="10" fill="#94a3b8">Docker</text>
+
+      <!-- Etiqueta versión Frigate -->
+      <text x="245" y="195" text-anchor="middle" font-size="9" fill="#94a3b8">v0.17.1</text>
+    </svg>
+  </div>
+</div>
+
+<!-- FLUJO DE FUNCIONAMIENTO -->
+<div class="section">
+  <h2>Cómo funciona paso a paso</h2>
+  <div class="flow-steps">
+    <div class="flow-step">
+      <div class="number">1</div>
+      <div class="content">
+        <strong>La cámara transmite audio por RTSP</strong>
+        <span>La Tapo C210 emite un flujo de vídeo y audio continuo por el protocolo RTSP en el puerto 554. Este flujo viaja por la red local de tu casa.</span>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="number">2</div>
+      <div class="content">
+        <strong>go2rtc gestiona la conexión al stream</strong>
+        <span>go2rtc (incluido dentro de Frigate) se conecta a la cámara y gestiona el stream de forma eficiente. Frigate le delega esta tarea para evitar problemas de permisos.</span>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="number">3</div>
+      <div class="content">
+        <strong>Frigate analiza el audio con IA</strong>
+        <span>Frigate extrae el audio del stream y lo pasa por un modelo de inteligencia artificial (TensorFlow Lite) entrenado para reconocer sonidos. Está configurado para escuchar específicamente ladridos de perro ("bark") con un umbral de confianza del 80%.</span>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="number">4</div>
+      <div class="content">
+        <strong>Frigate publica el evento en MQTT</strong>
+        <span>Cuando detecta un ladrido, Frigate publica un mensaje en el topic <code>frigate/sala_tapo/audio/bark</code> del broker Mosquitto.</span>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="number">5</div>
+      <div class="content">
+        <strong>El puente Python recibe el evento</strong>
+        <span>bridge.py está suscrito a ese topic MQTT. En cuanto llega el mensaje, lo lee e identifica que es un evento nuevo ("type": "new"). Tiene un cooldown de 10 segundos para evitar spam.</span>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="number">6</div>
+      <div class="content">
+        <strong>El puente dispara el webhook</strong>
+        <span>bridge.py hace una petición HTTP POST a la URL de Surveillance Station con el token de autenticación. Surveillance Station recibe la llamada y genera una notificación.</span>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="number">7</div>
+      <div class="content">
+        <strong>Recibes la notificación en el móvil</strong>
+        <span>La app DS cam recibe la notificación push de Surveillance Station y te avisa en tu móvil, estés donde estés.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TECNOLOGÍAS -->
+<div class="section">
+  <h2>Tecnologías utilizadas</h2>
+  <div class="tech-grid">
+
+    <div class="tech-card">
+      <span class="badge badge-blue">Detección de audio</span>
+      <h3>Frigate NVR</h3>
+      <p>Sistema de videovigilancia de código abierto especializado en detección de objetos y audio mediante IA. Usa TensorFlow Lite para clasificar sonidos en tiempo real. Es el cerebro de todo el sistema.</p>
+    </div>
+
+    <div class="tech-card">
+      <span class="badge badge-purple">Gestión de streams</span>
+      <h3>go2rtc</h3>
+      <p>Servidor de streams multimedia integrado en Frigate. Gestiona la conexión RTSP con la cámara y redistribuye el audio/vídeo internamente. Resuelve los problemas de compatibilidad con cámaras Tapo.</p>
+    </div>
+
+    <div class="tech-card">
+      <span class="badge badge-orange">Mensajería</span>
+      <h3>Mosquitto (MQTT)</h3>
+      <p>Broker de mensajería ligero para dispositivos IoT. Actúa de "central de comunicaciones": Frigate le envía eventos y el puente Python los recibe. El protocolo MQTT está diseñado para ser eficiente y fiable en redes locales.</p>
+    </div>
+
+    <div class="tech-card">
+      <span class="badge badge-green">Integración</span>
+      <h3>bridge.py (Python)</h3>
+      <p>Microservicio puente escrito en Python. Su único trabajo es escuchar el topic MQTT de ladridos y disparar el webhook de Surveillance Station. Pesa ~19MB de RAM y tiene reconexión automática.</p>
+    </div>
+
+    <div class="tech-card">
+      <span class="badge badge-red">Notificaciones</span>
+      <h3>Surveillance Station</h3>
+      <p>Sistema de gestión de cámaras de Synology. Recibe el webhook y envía la notificación push a la app DS cam en tu móvil. Ya tenías este servicio funcionando con las cámaras Tapo.</p>
+    </div>
+
+    <div class="tech-card">
+      <span class="badge badge-gray">Infraestructura</span>
+      <h3>Docker / Container Manager</h3>
+      <p>Plataforma de contenedores que ejecuta los tres servicios (Frigate, Mosquitto, bridge.py) de forma aislada y fiable. El Container Manager de Synology proporciona la interfaz gráfica para gestionarlos.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ARCHIVOS DE CONFIGURACIÓN -->
+<div class="section">
+  <h2>Archivos clave del sistema</h2>
+  <div class="files-grid">
+    <div class="file-item">
+      <div class="filepath">/volume1/docker/frigate/</div>
+      <div class="filename">docker-compose.yml</div>
+      <p>Define y orquesta los tres contenedores: Frigate, Mosquitto y el puente. Es el archivo principal de la instalación.</p>
+    </div>
+    <div class="file-item">
+      <div class="filepath">/volume1/docker/frigate/config/</div>
+      <div class="filename">config.yml</div>
+      <p>Configuración de Frigate: qué cámara escuchar, qué sonidos detectar, umbral de confianza y conexión MQTT.</p>
+    </div>
+    <div class="file-item">
+      <div class="filepath">/volume1/docker/frigate/mosquitto/</div>
+      <div class="filename">mosquitto.conf</div>
+      <p>Configuración del broker MQTT: puerto, permisos de conexión anónima (red local) y persistencia de mensajes.</p>
+    </div>
+    <div class="file-item">
+      <div class="filepath">/volume1/docker/frigate/bridge/</div>
+      <div class="filename">bridge.py</div>
+      <p>Script Python del puente. Lee el topic MQTT y dispara el webhook de Surveillance Station con cooldown configurable.</p>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIGURACIÓN DE FRIGATE -->
+<div class="section">
+  <h2>Configuración de Frigate (config.yml)</h2>
+  <div class="config-block">
+<span class="comment"># Conexión al broker MQTT (Mosquitto en la misma red Docker)</span>
+<span class="key">mqtt</span>:
+  <span class="key">enabled</span>: <span class="value">true</span>
+  <span class="key">host</span>: <span class="value">192.168.1.162</span>     <span class="comment"># IP del Synology</span>
+  <span class="key">port</span>: <span class="value">1883</span>
+
+<span class="comment"># Detección de audio con IA</span>
+<span class="key">audio</span>:
+  <span class="key">enabled</span>: <span class="value">true</span>
+  <span class="key">listen</span>:
+    - <span class="value">bark</span>                    <span class="comment"># Escuchar ladridos de perro</span>
+  <span class="key">filters</span>:
+    <span class="key">bark</span>:
+      <span class="key">threshold</span>: <span class="value">0.80</span>        <span class="comment"># 80% de confianza mínima</span>
+
+<span class="comment"># go2rtc gestiona el stream para evitar problemas con Tapo</span>
+<span class="key">go2rtc</span>:
+  <span class="key">streams</span>:
+    <span class="key">sala_tapo</span>:
+      - <span class="value">rtsp://usuario:contraseña@192.168.1.167:554/stream1</span>
+
+<span class="comment"># Frigate se conecta a go2rtc localmente</span>
+<span class="key">cameras</span>:
+  <span class="key">sala_tapo</span>:
+    <span class="key">ffmpeg</span>:
+      <span class="key">inputs</span>:
+        - <span class="key">path</span>: <span class="value">rtsp://127.0.0.1:8554/sala_tapo</span>
+          <span class="key">roles</span>:
+            - <span class="value">audio</span>
+  </div>
+  <div class="note">
+    <strong>¿Por qué go2rtc?</strong> Las cámaras Tapo tienen restricciones de autenticación RTSP que generan errores "Operation not permitted" cuando ffmpeg intenta conectarse directamente. go2rtc actúa como intermediario y resuelve este problema.
+  </div>
+</div>
+
+<div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e3dd; font-size: 12px; color: #94a3b8;">
+  Documento generado el 9 de junio de 2026 · Sistema en producción en Synology DS225+
+</div>
+
+</body>
+</html>

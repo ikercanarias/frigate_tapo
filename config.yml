@@ -1,0 +1,81 @@
+version: 0.17-0
+
+mqtt:
+  enabled: true
+  host: mosquitto
+  port: 1883
+  stats_interval: 30
+
+go2rtc:
+  streams:
+    sala_tapo:
+      - rtsp://rimpompeyo:santutxu1@192.168.1.167:554/stream1
+      - ffmpeg:sala_tapo#audio=aac
+      - ffmpeg:sala_tapo#audio=opus
+      - tapo://santutxu1@192.168.1.167
+
+  webrtc:
+    candidates:
+      - 192.168.1.162:8555
+      - stun:8555
+
+audio:
+  enabled: true
+  min_volume: 200                    # Sensibilidad alta para sonidos bajos
+  listen:
+    - bark
+    - dog
+    - animal
+    - howl
+    - whine
+    - growl
+  filters:
+    bark:
+      threshold: 0.5                 # Umbral mínimo permitido
+    dog:
+      threshold: 0.5
+    animal:
+      threshold: 0.5
+    howl:
+      threshold: 0.5
+    whine:
+      threshold: 0.5
+    growl:
+      threshold: 0.5
+
+detectors:
+  cpu:
+    type: cpu
+
+cameras:
+  sala_tapo:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/sala_tapo
+          roles:
+            - audio
+          input_args: preset-rtsp-generic
+    detect:
+      enabled: false
+    record:
+      enabled: false
+    snapshots:
+      enabled: false
+
+    audio:
+      enabled: true
+      listen:
+        - bark
+        - dog
+        - animal
+        - howl
+        - whine
+        - growl
+
+# Logs detallados para depuración
+logger:
+  default: info
+  logs:
+    frigate.audio: debug
+    frigate.audio_processor: debug

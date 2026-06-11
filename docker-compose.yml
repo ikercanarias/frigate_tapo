@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+
+  frigate:
+    container_name: frigate
+    privileged: true
+    restart: unless-stopped
+    image: ghcr.io/blakeblackshear/frigate:0.17.1
+    shm_size: "256mb"
+    ports:
+      - "5050:5000"  # Acceso web por el puerto 5050 de tu NAS
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /volume1/docker/frigate/config:/config
+      - /volume1/docker/frigate/storage:/media/frigate
+    networks:
+      - frigate_net
+    depends_on:
+      - mosquitto
+    environment:
+      - LIBVA_DRIVER_NAME=i965
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - /volume1/docker/frigate/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    networks:
+      - frigate_net
+
+  frigate-bridge:
+    image: python:3.11-alpine
+    container_name: frigate-bridge
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    volumes:
+      - /volume1/docker/frigate/bridge/bridge.py:/app/bridge.py:ro
+    working_dir: /app
+    command: >
+      sh -c "pip install paho-mqtt requests -q && python -u bridge.py"
+    environment:
+      MQTT_HOST: "mosquitto"
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: "frigate/sala_tapo/audio/bark"
+      WEBHOOK_URL: "https://192.168.1.162:5001/webapi/SurveillanceStation/Webhook/Incoming/v1?token=mMBsrAEeOyeVPNCLDRb4XavMItt790lY2fV9J6bqkbgpdtCivSOdiJrLFN0pnwGI"
+      COOLDOWN_SECS: "10"
+    networks:
+      - frigate_net
+
+networks:
+  frigate_net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
